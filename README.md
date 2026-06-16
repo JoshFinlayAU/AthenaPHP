@@ -32,6 +32,49 @@ docker build --platform linux/amd64 -t athena-build:deb13 -f build/Dockerfile.de
 make ext deb
 ```
 
+### Building the extension without Docker
+
+If you've already got PHP dev headers and libsodium on the box (your laptop or a
+Debian build host), you can skip the container and build straight against the
+local PHP:
+
+```sh
+make ext-local                                   # uses `phpize` on PATH
+PHPIZE=phpize8.3 PHP_CONFIG=php-config8.3 make ext-local   # pin a version
+```
+
+The `.so` lands in `build/out/local/`. This targets whatever PHP version you have
+installed, so it's meant for development - for something you're going to ship,
+build with Docker (or on a real Debian 13 host) so it matches 8.3/8.4.
+
+### Debian 13 packages
+
+To build on Debian 13 directly (no container), you need:
+
+```sh
+# PHP 8.3 isn't in Debian 13's repos, so add Ondřej Surý's:
+sudo apt install -y ca-certificates curl lsb-release
+curl -fsSL https://packages.sury.org/php/apt.gpg | sudo tee /etc/apt/trusted.gpg.d/sury-php.gpg >/dev/null
+echo "deb https://packages.sury.org/php/ $(lsb_release -sc) main" | sudo tee /etc/apt/sources.list.d/sury-php.list
+sudo apt update
+
+# build deps
+sudo apt install -y build-essential autoconf pkg-config file dpkg-dev \
+    libsodium-dev php8.3-dev php8.4-dev
+```
+
+Plus Go 1.24+ for the encoder (from golang.org or `apt install golang` if it's
+new enough).
+
+On the target/runtime server you only need:
+
+```sh
+sudo apt install -y libsodium23 php-common php8.3-cli php8.4-cli   # +fpm if you use it
+```
+
+(`php-common` provides `phpenmod`, which the package uses to enable the extension.
+The `.deb` already declares `libsodium23` and `php-common` as dependencies.)
+
 ## Encoding a project
 
 ```sh
@@ -57,7 +100,7 @@ athena info     check whether a file is encoded and print its header
 ## Installing on a server
 
 ```sh
-sudo apt install ./athena-php_1.0.0_amd64.deb
+sudo apt install ./athena-php_0.1.0_amd64.deb
 ```
 
 The package installs `athena.so` into the extension directory for each PHP

@@ -4,9 +4,9 @@ KEY        ?= athena.key
 HEADER     := ext/athena/athena_key.h
 GO         ?= go
 DOCKER     := build/docker.sh
-PKG_VERSION ?= 1.0.0
+PKG_VERSION ?= 0.1.0
 
-.PHONY: all build test key ext deb itest image encode clean distclean help
+.PHONY: all build test key ext ext-local deb itest image encode clean distclean help
 
 all: build ## Build the Go encoder (default)
 
@@ -29,6 +29,9 @@ image: ## Build the Debian 13 build image
 
 ext: $(HEADER) ## Build athena.so for PHP 8.3 & 8.4 (Docker)
 	$(DOCKER) build/build-ext.sh
+
+ext-local: $(HEADER) ## Build athena.so against the local PHP (no Docker)
+	build/build-ext-local.sh
 
 deb: ext ## Build the .deb package (Docker)
 	$(DOCKER) "PKG_VERSION=$(PKG_VERSION) build/package-deb.sh"

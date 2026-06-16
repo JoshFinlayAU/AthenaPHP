@@ -1,0 +1,83 @@
+# Builds the encoder, the athena.so for PHP 8.3/8.4, and the .deb on Debian 13.
+# On a tag (e.g. v0.1) it uploads the .deb to the package registry and cuts a
+# release.
+#
+# The decoder needs a key compiled in. Set a masked/file CI/CD variable
+# ATHENA_KEY_B64 (base64 of a 32-byte key: `base64 -w0 athena.key`) so releases
+# embed your real key. Without it, builds use a throwaway key and the resulting
+# .deb can only decode files encoded by that same throwaway key.
+
+stages:
+  - build
+  - release
+
+variables:
+  DEBIAN_FRONTEND: "noninteractive"
+  GOTOOLCHAIN: "local"
+
+build-deb:
+  stage: build
+  image: debian:13
+  before_script:
+    - apt-get update
+    - >
+      apt-get install -y --no-install-recommends
+      ca-certificates curl gnupg lsb-release apt-transport-https
+      build-essential autoconf pkg-config file dpkg-dev libsodium-dev
+    # Debian's Go can lag what go.mod needs, so install the latest stable from go.dev.
+    - GO_VER="$(curl -fsSL 'https://go.dev/VERSION?m=text' | head -1)"
+    - curl -fsSL "https://go.dev/dl/${GO_VER}.linux-$(dpkg --print-architecture).tar.gz" -o /tmp/go.tgz
+    - rm -rf /usr/local/go && tar -C /usr/local -xzf /tmp/go.tgz
+    - export PATH="/usr/local/go/bin:$PATH"
+    - go version
+    - curl -fsSL https://packages.sury.org/php/apt.gpg -o /etc/apt/trusted.gpg.d/sury-php.gpg
+    - echo "deb https://packages.sury.org/php/ $(lsb_release -sc) main" > /etc/apt/sources.list.d/sury-php.list
+    - apt-get update
+    - apt-get install -y --no-install-recommends php8.3-cli php8.3-dev php8.4-cli php8.4-dev
+  script:
+    - export PATH="/usr/local/go/bin:$PATH"
+    - 'PKG_VERSION="${CI_COMMIT_TAG#v}"; PKG_VERSION="${PKG_VERSION:-0.1.0}"; export PKG_VERSION'
+    - go test ./...
+    - go build -o bin/athena ./cmd/athena
+    - |
+      if [ -n "${ATHENA_KEY_B64:-}" ]; then
+        echo "$ATHENA_KEY_B64" | base64 -d > athena.key
+        echo "using ATHENA_KEY_B64 from CI/CD variables"
+      else
+        ./bin/athena keygen -key athena.key -force
+        echo "WARNING: ATHENA_KEY_B64 not set - built with a throwaway key"
+      fi
+    - ./bin/athena header -key athena.key -out ext/athena/athena_key.h
+    - PHP_VERSIONS="8.3 8.4" build/build-ext.sh
+    - build/package-deb.sh
+  artifacts:
+    paths:
+      - build/*.deb
+    expire_in: 30 days
+
+release:
+  stage: release
+  image: registry.gitlab.com/gitlab-org/release-cli:latest
+  needs:
+    - job: build-deb
+      artifacts: true
+  rules:
+    - if: '$CI_COMMIT_TAG'
+  script:
+    - 'PKG_VERSION="${CI_COMMIT_TAG#v}"; PKG_VERSION="${PKG_VERSION:-0.1.0}"'
+    - DEB="athena-php_${PKG_VERSION}_$(dpkg --print-architecture 2>/dev/null || echo amd64).deb"
+    - |
+      for f in build/*.deb; do
+        name="$(basename "$f")"
+        echo "uploading $name"
+        curl --fail --silent --show-error --header "JOB-TOKEN: $CI_JOB_TOKEN" \
+          --upload-file "$f" \
+          "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/athena-php/${CI_COMMIT_TAG}/${name}"
+      done
+    - |
+      ASSET_URL="${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/athena-php/${CI_COMMIT_TAG}/${DEB}"
+      release-cli create \
+        --name "Athena PHP ${CI_COMMIT_TAG}" \
+        --tag-name "${CI_COMMIT_TAG}" \
+        --description "Athena PHP decoder for PHP 8.3 and 8.4 on Debian 13." \
+        --assets-link "{\"name\":\"${DEB}\",\"url\":\"${ASSET_URL}\",\"link_type\":\"package\"}"
