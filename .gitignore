@@ -1,0 +1,27 @@
+# Secrets - never commit
+athena.key
+*.key
+ext/athena/athena_key.h
+
+# Build output
+/bin/
+/build/out/
+/build/test-encoded/
+/build/*.deb
+
+# Extension build artifacts (phpize)
+ext/athena/.deps
+ext/athena/.libs/
+ext/athena/*.lo
+ext/athena/*.la
+ext/athena/Makefile*
+ext/athena/config.h*
+ext/athena/configure*
+ext/athena/autom4te.cache/
+ext/athena/build/
+ext/athena/modules/
+ext/athena/run-tests.php
+ext/athena/include/
+ext/athena/acinclude.m4
+ext/athena/aclocal.m4
+ext/athena/libtool

@@ -1,0 +1,22 @@
+# Debian 13 (trixie) build image with PHP 8.3 and 8.4 dev toolchains.
+# PHP 8.3 is not in Debian 13's own repos, so we add Ondřej Surý's PHP repo,
+# which provides both 8.3 and 8.4 -dev packages for trixie.
+FROM debian:13
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates curl gnupg lsb-release apt-transport-https \
+        build-essential autoconf pkg-config file \
+        libsodium-dev \
+    && curl -fsSL https://packages.sury.org/php/apt.gpg \
+         -o /etc/apt/trusted.gpg.d/sury-php.gpg \
+    && echo "deb https://packages.sury.org/php/ $(lsb_release -sc) main" \
+         > /etc/apt/sources.list.d/sury-php.list \
+    && apt-get update && apt-get install -y --no-install-recommends \
+        php8.3-cli php8.3-dev php8.3-opcache \
+        php8.4-cli php8.4-dev php8.4-opcache \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /work
+ENTRYPOINT ["/bin/bash"]
